@@ -1,0 +1,41 @@
+[tools]
+node = "24"
+pnpm = "11"
+
+[tasks.build]
+description = "Build all package outputs with tsdown"
+run = "pnpm build"
+
+[tasks.test]
+description = "Run Vitest test suite"
+run = "pnpm test"
+
+[tasks.lint]
+description = "Check linting and formatting with Biome"
+run = "pnpm lint"
+
+[tasks."lint:fix"]
+description = "Auto-fix linting and formatting issues with Biome"
+run = "pnpm lint:fix"
+
+[tasks.typecheck]
+description = "Typecheck TypeScript declarations"
+run = "pnpm typecheck"
+
+[tasks.check]
+description = "Run full verification suite (lint, typecheck, test, build)"
+run = [
+  "pnpm lint",
+  "pnpm typecheck",
+  "pnpm test",
+  "pnpm build",
+]
+
+[tasks."pre-commit"]
+description = "Run checks before commit"
+run = """
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+"""
