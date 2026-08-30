@@ -1,7 +1,7 @@
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import express from "express";
+import { createExpressRouter, defineAction, defineToolGroup, registerMcpTools } from "mcp-multiplex";
 import { z } from "zod";
-import { createExpressRouter, defineAction, defineToolGroup, registerMcpTools } from "../src/index.js";
 
 // 1. Define Domain Actions
 const searchDocs = defineAction({

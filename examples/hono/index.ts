@@ -1,7 +1,8 @@
 import { createMcpHonoApp } from "@modelcontextprotocol/hono";
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
+import { Hono } from "hono";
+import { createHonoRoutes, defineAction, defineToolGroup, registerMcpTools } from "mcp-multiplex";
 import { z } from "zod";
-import { createHonoRoutes, defineAction, defineToolGroup, registerMcpTools } from "../src/index.js";
 
 // 1. Define Actions
 const getOrder = defineAction({
@@ -72,7 +73,15 @@ const toolGroups = [
 ];
 
 // 3. Setup Hono App with @modelcontextprotocol/hono
-const app = createMcpHonoApp();
+type Variables = {
+  user: { id: string; email: string };
+  parsedBody?: unknown;
+};
+
+const app = new Hono<{ Variables: Variables }>();
+
+// Apply MCP Hono middleware / base app setup
+app.route("/", createMcpHonoApp());
 
 // Auth Middleware
 app.use("*", async (c, next) => {
