@@ -1,6 +1,7 @@
 {
   "name": "mcp-multiplex",
   "version": "0.0.0",
+  "packageManager": "pnpm@11.22.0",
   "description": "Effect-grouped action multiplexing for Model Context Protocol (MCP) and Dual HTTP APIs",
   "type": "module",
   "main": "./dist/index.mjs",
