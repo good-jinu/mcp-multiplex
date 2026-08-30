@@ -1,0 +1,111 @@
+{
+  "name": "mcp-multiplex",
+  "version": "0.1.0",
+  "description": "Effect-grouped action multiplexing for Model Context Protocol (MCP) and Dual HTTP APIs",
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./express": {
+      "types": "./dist/adapters/express.d.mts",
+      "import": "./dist/adapters/express.mjs"
+    },
+    "./hono": {
+      "types": "./dist/adapters/hono.d.mts",
+      "import": "./dist/adapters/hono.mjs"
+    },
+    "./fastify": {
+      "types": "./dist/adapters/fastify.d.mts",
+      "import": "./dist/adapters/fastify.mjs"
+    },
+    "./next": {
+      "types": "./dist/adapters/next.d.mts",
+      "import": "./dist/adapters/next.mjs"
+    },
+    "./fetch": {
+      "types": "./dist/adapters/fetch.d.mts",
+      "import": "./dist/adapters/fetch.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/good-jinu/mcp-multiplex.git"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit",
+    "changeset": "changeset",
+    "ci:version": "changeset version && pnpm install --no-frozen-lockfile",
+    "ci:release": "pnpm build && changeset publish"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "ai",
+    "agent",
+    "multiplexer",
+    "express",
+    "hono",
+    "fastify",
+    "nextjs",
+    "zod"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "zod": "^3.24.0 || ^4.0.0"
+  },
+  "peerDependencies": {
+    "@modelcontextprotocol/hono": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "express": "^4.0.0 || ^5.0.0",
+    "fastify": "^4.0.0 || ^5.0.0",
+    "hono": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@modelcontextprotocol/server": {
+      "optional": true
+    },
+    "express": {
+      "optional": true
+    },
+    "fastify": {
+      "optional": true
+    },
+    "hono": {
+      "optional": true
+    },
+    "@modelcontextprotocol/hono": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.11",
+    "@changesets/changelog-github": "^1.0.0",
+    "@changesets/cli": "^3.0.1",
+    "@modelcontextprotocol/hono": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.13.3",
+    "express": "^5.2.1",
+    "fastify": "^5.12.1",
+    "hono": "^4.13.5",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7",
+    "zod": "^3.24.2"
+  }
+}
