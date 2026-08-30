@@ -1,6 +1,6 @@
 {
   "name": "mcp-multiplex",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Effect-grouped action multiplexing for Model Context Protocol (MCP) and Dual HTTP APIs",
   "type": "module",
   "main": "./dist/index.mjs",
