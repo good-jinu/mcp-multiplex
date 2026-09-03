@@ -4,7 +4,7 @@ import type { ActionDefinition, ContextResolver } from "../core/types.js";
 
 export interface ExpressAdapterOptions {
   /** Extract user session from Express Request. Defaults to req.user */
-  getUser?: (req: Request) => any;
+  getUser?: (req: Request) => unknown;
   /** Optional middleware(s) applied to all mounted routes (e.g. auth middleware) */
   middleware?: ((req: Request, res: Response, next: NextFunction) => void | Promise<void>)[];
   /** Default fallback context resolver */
