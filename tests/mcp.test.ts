@@ -113,4 +113,56 @@ describe("mcp-multiplex MCP Tools", () => {
     expect(unknownResp.isError).toBe(true);
     expect(unknownResp.content[0].text).toContain("Unknown action 'non_existent'");
   });
+
+  it("should register on mock server with legacy 'tool' method", async () => {
+    const registeredTools = new Map<string, { config: any; handler: Function }>();
+    const mockLegacyServer = {
+      tool: (name: string, config: any, handler: Function) => {
+        registeredTools.set(name, { config, handler });
+      },
+    };
+
+    const echoAction = defineAction({
+      name: "echo",
+      description: "Echo message",
+      effect: "read",
+      input: z.object({ message: z.string() }),
+      handler: async (_ctx, input) => ({ echo: input.message }),
+    });
+
+    const group = defineToolGroup({
+      name: "utilities",
+      effect: "read",
+      summary: "Utility tools",
+      actions: [echoAction],
+    });
+
+    registerMcpTools(mockLegacyServer, null, [group]);
+    expect(registeredTools.has("utilities")).toBe(true);
+  });
+
+  it("should throw error if server is missing or unsupported", () => {
+    const echoAction = defineAction({
+      name: "echo",
+      description: "Echo message",
+      effect: "read",
+      input: z.object({ message: z.string() }),
+      handler: async () => ({}),
+    });
+
+    const group = defineToolGroup({
+      name: "utilities",
+      effect: "read",
+      summary: "Utility tools",
+      actions: [echoAction],
+    });
+
+    expect(() => registerMcpTools(null as any, null, [group])).toThrow(
+      "[mcp-multiplex] McpServer instance is required for tool registration.",
+    );
+
+    expect(() => registerMcpTools({} as any, null, [group])).toThrow(
+      "[mcp-multiplex] Target server does not support 'registerTool' or 'tool' registration method.",
+    );
+  });
 });
