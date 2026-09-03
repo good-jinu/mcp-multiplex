@@ -69,11 +69,19 @@ export function prepareMcpTools(groups: ToolGroupDefinition[]): PreparedMcpTool[
 }
 
 /**
+ * Interface representing an McpServer instance supporting tool registration (MCP SDK v2 or v1).
+ */
+export interface McpServerLike {
+  registerTool?: (name: string, config: any, handler: any) => any;
+  tool?: (name: string, config: any, handler: any) => any;
+}
+
+/**
  * Registers prepared MCP tools (or raw tool groups) onto an McpServer instance (SDK v2 or v1).
  */
-export function registerMcpTools(
-  server: any,
-  user: any,
+export function registerMcpTools<TUser = unknown>(
+  server: McpServerLike,
+  user: TUser,
   toolsOrGroups: (PreparedMcpTool | ToolGroupDefinition)[],
 ): void {
   if (!server) {
