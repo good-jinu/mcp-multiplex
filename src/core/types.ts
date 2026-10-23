@@ -32,10 +32,10 @@ export interface ActionHttpOptions {
   method: "get" | "post" | "put" | "patch" | "delete";
   path: string;
   /**
-   * Custom parser to extract input from HTTP request before schema validation.
-   * If omitted, default parsers (query for GET, body for POST/PUT/PATCH/DELETE) are used.
+   * Custom parser to extract input from the framework's request before schema validation.
+   * If omitted, input is the query string, then the JSON body, then the path parameters (later wins).
    */
-  parseInput?: (req: any) => unknown;
+  parseInput?: (req: any) => unknown | Promise<unknown>;
 }
 
 /**
@@ -49,21 +49,21 @@ export interface ActionDefinition<TContext = any, TInput = any, TOutput = any> {
   description: string;
   /** Safety effect: 'read' (read-only), 'write' (mutating), or 'destructive' (irreversible delete) */
   effect: CapabilityEffect;
-  /** Input validation schema (Zod schema) */
-  input: z.ZodType<TInput, any, any>;
+  /** Input validation schema (Zod 4 schema) */
+  input: z.ZodType<TInput, any>;
   /** Pure business logic handler */
   handler: (ctx: TContext, input: TInput) => Promise<TOutput> | TOutput;
-  /** Context resolver for this specific action (or falls back to group/server default) */
+  /** Context resolver for this action; overrides the adapter's or `registerMcpTools`' default resolver */
   context?: ContextResolver<any, TContext>;
   /** Optional HTTP endpoint configuration */
   http?: ActionHttpOptions;
   /** Domain error mapper */
   mapError?: (err: unknown) => CapabilityError | undefined;
-  /** If false or string reason provided, action is excluded from MCP tools (useful for human-only admin routes) */
+  /** `false` keeps the action out of MCP tools (human-only routes such as billing or admin) */
   mcp?: boolean;
-  /** Rationale for excluding from MCP (synonym with setting mcp: false) */
+  /** Excludes the action from MCP tools, recording why (same effect as `mcp: false`) */
   mcpExcluded?: string;
-  /** Alias for mcp (if agent: false, excluded from MCP tools) */
+  /** Alias of `mcp`: `agent: false` excludes the action from MCP tools */
   agent?: boolean;
 }
 

@@ -19,26 +19,24 @@ export const EFFECT_LABEL: Record<CapabilityEffect, string> = {
 };
 
 /**
- * Serialize a Zod schema to JSON Schema.
+ * Serialize a Zod schema to JSON Schema (the input side, as callers send it).
+ * Returns undefined for schemas that cannot be represented.
  */
-export function toJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> | undefined {
+export function toJsonSchema(schema: z.ZodType): Record<string, unknown> | undefined {
   try {
-    if (typeof (z as any).toJSONSchema === "function") {
-      return (z as any).toJSONSchema(schema, { io: "input", unrepresentable: "any" });
-    }
+    return z.toJSONSchema(schema, { io: "input", unrepresentable: "any" }) as Record<string, unknown>;
   } catch {
-    // Fallback if toJSONSchema throws
+    return undefined;
   }
-  return undefined;
 }
 
 /**
- * Determines whether a schema is too large to inline directly into tools/list.
+ * Whether an action's input schema is too large to inline into `tools/list`. Such schemas are left
+ * out of the tool's argument schema and returned to the caller when its arguments fail validation.
  */
 export function isSchemaOnDemand(action: ActionDefinition): boolean {
   const json = toJsonSchema(action.input);
-  if (!json) return false;
-  return JSON.stringify(json).length > INLINE_SCHEMA_LIMIT;
+  return json !== undefined && JSON.stringify(json).length > INLINE_SCHEMA_LIMIT;
 }
 
 const passthroughArgs = z.record(z.string(), z.unknown());
@@ -47,22 +45,14 @@ const passthroughArgs = z.record(z.string(), z.unknown());
  * Builds a union schema for multiplexed tool args while relaxing strict validation
  * for documentation purposes (actual strict validation happens per action during execution).
  */
-export function buildMultiplexedArgsSchema(actions: ActionDefinition[]): z.ZodTypeAny {
-  if (actions.length === 0) return passthroughArgs;
+export function buildMultiplexedArgsSchema(actions: ActionDefinition[]): z.ZodType {
+  const documented = actions
+    .filter((action) => !isSchemaOnDemand(action))
+    .map((action) => (action.input instanceof z.ZodObject ? action.input.loose() : action.input));
 
-  const members: z.ZodTypeAny[] = [passthroughArgs];
-
-  for (const action of actions) {
-    if (!isSchemaOnDemand(action)) {
-      const input = action.input as any;
-      const looseInput = typeof input.loose === "function" ? input.loose() : input;
-      members.push(looseInput);
-    }
-  }
-
-  // Deduplicate schema instances
-  const unique = members.filter((m, i, arr) => arr.indexOf(m) === i);
-  return unique.length === 1 ? unique[0]! : z.union(unique as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]);
+  // The open record keeps every call valid at the tool boundary; each action validates strictly itself
+  const [first, ...rest] = documented;
+  return first === undefined ? passthroughArgs : z.union([first, ...rest, passthroughArgs]);
 }
 
 /**
@@ -70,7 +60,7 @@ export function buildMultiplexedArgsSchema(actions: ActionDefinition[]): z.ZodTy
  */
 export function buildMultiplexedDescription(group: ToolGroupDefinition, activeActions: ActionDefinition[]): string {
   const rows = activeActions.map((action) => {
-    const onDemandNote = isSchemaOnDemand(action) ? " (Input schema is deferred to on-demand discovery)" : "";
+    const onDemandNote = isSchemaOnDemand(action) ? " (input schema is returned if a call's args are invalid)" : "";
     return `• ${action.name} [${EFFECT_LABEL[action.effect]}]: ${action.description}${onDemandNote}`;
   });
 

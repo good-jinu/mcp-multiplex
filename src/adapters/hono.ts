@@ -1,5 +1,7 @@
 import { type Context, Hono, type MiddlewareHandler } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { executeAction } from "../core/dispatcher.js";
+import { httpErrorBody, mergeHttpInput, parseJsonBody } from "../core/http.js";
 import type { ActionDefinition, ContextResolver } from "../core/types.js";
 
 export interface HonoAdapterOptions {
@@ -19,46 +21,29 @@ export function createHonoRoutes(actions: ActionDefinition[], options: HonoAdapt
   const getUser = options.getUser || ((c: Context) => c.get("user"));
   const middlewares = options.middleware || [];
 
-  const httpActions = actions.filter((a) => a.http);
-
-  for (const action of httpActions) {
+  for (const action of actions.filter((a) => a.http)) {
     const http = action.http!;
-    const method = http.method.toUpperCase();
+    const method = http.method.toLowerCase();
 
-    (router as any).on(method, http.path, ...middlewares, async (c: Context) => {
+    router.on(method.toUpperCase(), [http.path], ...middlewares, async (c: Context) => {
       let rawInput: unknown;
-
       if (http.parseInput) {
         rawInput = await http.parseInput(c);
       } else {
-        const query = c.req.query() || {};
-        const params = c.req.param() || {};
-        let body: any = {};
-        if (http.method.toLowerCase() !== "get") {
-          try {
-            body = await c.req.json();
-          } catch {
-            body = {};
-          }
+        let body: unknown = {};
+        if (method !== "get") {
+          const parsed = parseJsonBody(await c.req.text());
+          if (!parsed.ok) return c.json(httpErrorBody(parsed.error), parsed.error.status as ContentfulStatusCode);
+          body = parsed.body;
         }
-        rawInput = { ...query, ...params, ...(typeof body === "object" && body !== null ? body : {}) };
+        rawInput = mergeHttpInput(c.req.query(), body, c.req.param());
       }
 
-      const user = getUser(c);
-      const result = await executeAction(action, rawInput, user, options.contextResolver);
-
-      if (!result.ok) {
-        return c.json(
-          {
-            error: result.error.code,
-            message: result.error.message,
-            details: result.error.details,
-          },
-          result.error.status as any,
-        );
+      const result = await executeAction(action, rawInput, await getUser(c), options.contextResolver);
+      if (result.ok) {
+        return c.json(result.data, 200);
       }
-
-      return c.json(result.data, 200);
+      return c.json(httpErrorBody(result.error), result.error.status as ContentfulStatusCode);
     });
   }
 

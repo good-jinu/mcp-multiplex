@@ -1,7 +1,8 @@
 import express from "express";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createExpressRouter, defineAction } from "../src/index.js";
+import { createExpressRouter } from "../src/adapters/express.js";
+import { defineAction } from "../src/index.js";
 
 describe("mcp-multiplex Express Adapter", () => {
   it("should handle GET, POST, and DELETE requests", async () => {
@@ -62,6 +63,29 @@ describe("mcp-multiplex Express Adapter", () => {
         body: JSON.stringify({ name: "A" }),
       });
       expect(badRes.status).toBe(400);
+    } finally {
+      server.close();
+    }
+  });
+});
+
+describe("mcp-multiplex Express Adapter parseInput", () => {
+  it("awaits an async parseInput", async () => {
+    const app = express();
+    const echo = defineAction({
+      name: "echo",
+      description: "Echo",
+      effect: "read",
+      input: z.object({ value: z.string() }),
+      http: { method: "get", path: "/echo", parseInput: async () => ({ value: "from-parser" }) },
+      handler: async (_ctx, input) => input,
+    });
+    app.use(createExpressRouter([echo]));
+    const server = app.listen(0);
+    try {
+      const res = await fetch(`http://localhost:${(server.address() as any).port}/echo`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ value: "from-parser" });
     } finally {
       server.close();
     }

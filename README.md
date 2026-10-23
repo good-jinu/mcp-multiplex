@@ -29,6 +29,18 @@
 pnpm add mcp-multiplex zod @modelcontextprotocol/server
 ```
 
+Requires Zod 4 and the MCP TypeScript SDK v2. The package root (`mcp-multiplex`) is framework-free and only
+needs `zod`; each adapter is its own entry point and needs only its framework:
+
+| Import | Needs |
+| --- | --- |
+| `mcp-multiplex` | `zod` |
+| `mcp-multiplex/next` | `@modelcontextprotocol/server` |
+| `mcp-multiplex/hono` | `hono` |
+| `mcp-multiplex/express` | `express` |
+| `mcp-multiplex/fastify` | (a Fastify plugin; no runtime import) |
+| `mcp-multiplex/fetch` | nothing extra |
+
 ---
 
 ## ⚡ Quick Start: Define Actions & Tool Groups
@@ -104,7 +116,9 @@ export const toolGroups = [
 ### 1. Hono & `@modelcontextprotocol/hono`
 ```typescript
 import { createMcpHonoApp } from "@modelcontextprotocol/hono";
-import { registerMcpTools, createHonoRoutes } from "mcp-multiplex/hono";
+import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
+import { registerMcpTools } from "mcp-multiplex";
+import { createHonoRoutes } from "mcp-multiplex/hono";
 import { searchDocs, createIssue, deleteIssue, toolGroups } from "./actions";
 
 const app = createMcpHonoApp();
@@ -166,8 +180,8 @@ fastify.listen({ port: 8080 });
 ### 4. Express
 ```typescript
 import express from "express";
-import { createExpressRouter, registerMcpTools } from "mcp-multiplex/express";
-import { searchDocs, createIssue, deleteIssue, toolGroups } from "./actions";
+import { createExpressRouter } from "mcp-multiplex/express";
+import { searchDocs, createIssue, deleteIssue } from "./actions";
 
 const app = express();
 app.use(express.json());
@@ -177,6 +191,22 @@ app.use("/api", createExpressRouter([searchDocs, createIssue, deleteIssue]));
 
 app.listen(8080);
 ```
+
+---
+
+## 📥 HTTP Input & Errors
+
+Unless an action sets `http.parseInput`, its input is the query string, then the JSON body, then the path
+parameters; later sources win, so a body can never override `:id` in `DELETE /issues/:id`.
+
+Failures use one shape everywhere: HTTP responds with `{ error, message, details }` and the error's status, and
+MCP returns an error result with the message. Throw (or map with `mapError`) any object that has a numeric
+`status`, a string `code` and a string `message` to control both; anything else becomes `500 internal_error`.
+Invalid arguments are `400 invalid_input`, and the message names each failing field (`title: Required`). Over MCP,
+the error also includes the action's expected JSON schema, so the agent can correct its call.
+
+Pass the same `contextResolver` to your HTTP adapter and to `registerMcpTools` (`createNextHandler` does this for
+you), so an action sees the same context whichever way it is called.
 
 ---
 

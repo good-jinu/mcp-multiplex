@@ -9,3 +9,8 @@ export function defineAction<TContext = any, TInput = any, TOutput = any>(
 ): ActionDefinition<TContext, TInput, TOutput> {
   return definition;
 }
+
+/** Whether an action may be offered to AI agents as part of an MCP tool. */
+export function isExposedToMcp(action: ActionDefinition): boolean {
+  return action.mcp !== false && action.agent !== false && !action.mcpExcluded;
+}
