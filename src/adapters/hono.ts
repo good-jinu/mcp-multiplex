@@ -5,7 +5,9 @@ import { httpErrorBody, mergeHttpInput, parseJsonBody } from "../core/http.js";
 import type { ActionDefinition, ContextResolver } from "../core/types.js";
 
 export interface HonoAdapterOptions {
-  /** Extract user session from Hono Context. Defaults to c.get('user') */
+  /** Extract context from Hono Context. Defaults to c.get('user') */
+  getContext?: (c: Context) => any;
+  /** Extract user session from Hono Context (alias of getContext). Defaults to c.get('user') */
   getUser?: (c: Context) => any;
   /** Optional middleware(s) applied to all mounted routes */
   middleware?: MiddlewareHandler[];
@@ -18,7 +20,7 @@ export interface HonoAdapterOptions {
  */
 export function createHonoRoutes(actions: ActionDefinition[], options: HonoAdapterOptions = {}): Hono {
   const router = new Hono();
-  const getUser = options.getUser || ((c: Context) => c.get("user"));
+  const getCtx = options.getContext || options.getUser || ((c: Context) => c.get("user"));
   const middlewares = options.middleware || [];
 
   for (const action of actions.filter((a) => a.http)) {
@@ -39,7 +41,7 @@ export function createHonoRoutes(actions: ActionDefinition[], options: HonoAdapt
         rawInput = mergeHttpInput(c.req.query(), body, c.req.param());
       }
 
-      const result = await executeAction(action, rawInput, await getUser(c), options.contextResolver);
+      const result = await executeAction(action, rawInput, await getCtx(c), options.contextResolver);
       if (result.ok) {
         return c.json(result.data, 200);
       }

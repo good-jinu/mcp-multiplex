@@ -43,14 +43,23 @@ needs `zod`; each adapter is its own entry point and needs only its framework:
 
 ---
 
-## ⚡ Quick Start: Define Actions & Tool Groups
+## ⚡ Quick Start: Define Actions & Context
+
+Use `initMultiplex<TContext>()` for automatic type inference of `ctx` across all your actions:
 
 ```typescript
-import { defineAction, defineToolGroup } from "mcp-multiplex";
+import { initMultiplex, autoGroupActions } from "mcp-multiplex";
 import { z } from "zod";
 
-// Define domain actions
-export const searchDocs = defineAction({
+interface AppContext {
+  user: { id: string; orgId: string };
+}
+
+// 1. Initialize with your application's context type
+export const m = initMultiplex<AppContext>();
+
+// 2. Define domain actions (ctx is automatically typed as AppContext!)
+export const searchDocs = m.action({
   name: "search_documents",
   description: "Search workspace documents",
   effect: "read",
@@ -61,7 +70,7 @@ export const searchDocs = defineAction({
   },
 });
 
-export const createIssue = defineAction({
+export const createIssue = m.action({
   name: "create_issue",
   description: "Create a new issue ticket",
   effect: "write",
@@ -72,7 +81,7 @@ export const createIssue = defineAction({
   },
 });
 
-export const deleteIssue = defineAction({
+export const deleteIssue = m.action({
   name: "delete_issue",
   description: "Permanently delete an issue",
   effect: "destructive",
@@ -83,30 +92,9 @@ export const deleteIssue = defineAction({
   },
 });
 
-// Group actions by effect into clean MCP tools
-export const toolGroups = [
-  defineToolGroup({
-    name: "read_tools",
-    title: "Read Operations",
-    effect: "read", // Automatically marks tool as readOnlyHint: true
-    summary: "Search and inspect documents.",
-    actions: [searchDocs],
-  }),
-  defineToolGroup({
-    name: "manage_tools",
-    title: "Write Operations",
-    effect: "write", // Automatically marks tool as readOnlyHint: false
-    summary: "Create and update workspace resources.",
-    actions: [createIssue],
-  }),
-  defineToolGroup({
-    name: "delete_tools",
-    title: "Destructive Operations",
-    effect: "destructive", // Automatically marks tool as destructiveHint: true
-    summary: "Permanently remove workspace resources.",
-    actions: [deleteIssue],
-  }),
-];
+// 3. Group actions by effect into clean MCP tools (or use autoGroupActions)
+export const toolGroups = autoGroupActions([searchDocs, createIssue, deleteIssue]);
+// Generates: read_tools (searchDocs), manage_tools (createIssue), delete_tools (deleteIssue)
 ```
 
 ---
@@ -141,19 +129,38 @@ export default app;
 
 ---
 
-### 2. Next.js (App Router)
+### 2. Next.js App Router
+
+#### Dedicated MCP Endpoint (`app/api/mcp/route.ts`)
+If you only need to host an MCP endpoint:
+```typescript
+// app/api/mcp/route.ts
+import { createMcpHandler } from "mcp-multiplex/next";
+import { toolGroups } from "@/lib/actions";
+import { getAuthContext } from "@/lib/auth";
+
+export const { GET, POST, OPTIONS } = createMcpHandler({
+  tools: toolGroups, // or pass actions directly: [searchDocs, createIssue]
+  serverName: "workspace-mcp",
+  getContext: async (req) => await getAuthContext(req),
+  cors: true, // auto-handles preflight OPTIONS and sets CORS headers
+});
+```
+
+#### Dual REST + MCP Catch-all (`app/api/[...route]/route.ts`)
+If you want both REST routes (`/api/documents/search`, etc.) and the `/api/mcp` endpoint in a single handler:
 ```typescript
 // app/api/[...route]/route.ts
 import { createNextHandler } from "mcp-multiplex/next";
-import { searchDocs, createIssue, deleteIssue, toolGroups } from "@/lib/actions";
+import { toolGroups } from "@/lib/actions";
+import { getAuthContext } from "@/lib/auth";
 
-// Serves both REST routes (/api/documents/search, etc.) and the /api/mcp endpoint!
-export const { GET, POST, DELETE, PATCH } = createNextHandler({
-  actions: [searchDocs, createIssue, deleteIssue],
-  toolGroups,
+export const { GET, POST, DELETE, PATCH, OPTIONS } = createNextHandler({
+  toolGroups, // actions are automatically extracted for REST routes!
   basePath: "/api",
   mcpPath: "/api/mcp",
-  getUser: async (req) => await getAuthSession(req),
+  getContext: async (req) => await getAuthContext(req),
+  cors: true,
 });
 ```
 

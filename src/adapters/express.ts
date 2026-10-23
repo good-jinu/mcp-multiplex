@@ -4,7 +4,9 @@ import { httpErrorBody, mergeHttpInput } from "../core/http.js";
 import type { ActionDefinition, ContextResolver } from "../core/types.js";
 
 export interface ExpressAdapterOptions {
-  /** Extract user session from Express Request. Defaults to req.user */
+  /** Extract context from Express Request. Defaults to req.user */
+  getContext?: (req: Request) => unknown;
+  /** Extract user session from Express Request (alias of getContext). Defaults to req.user */
   getUser?: (req: Request) => unknown;
   /** Optional middleware(s) applied to all mounted routes (e.g. auth middleware) */
   middleware?: ((req: Request, res: Response, next: NextFunction) => void | Promise<void>)[];
@@ -18,7 +20,7 @@ export interface ExpressAdapterOptions {
  */
 export function createExpressRouter(actions: ActionDefinition[], options: ExpressAdapterOptions = {}): Router {
   const router = Router();
-  const getUser = options.getUser || ((req: Request) => (req as any).user);
+  const getCtx = options.getContext || options.getUser || ((req: Request) => (req as any).user);
   const middlewares = options.middleware || [];
 
   for (const action of actions.filter((a) => a.http)) {
@@ -29,7 +31,7 @@ export function createExpressRouter(actions: ActionDefinition[], options: Expres
       // Express 4 does not catch rejected promises, so failures outside the action go to `next`
       try {
         const rawInput = http.parseInput ? await http.parseInput(req) : mergeHttpInput(req.query, req.body, req.params);
-        const result = await executeAction(action, rawInput, await getUser(req), options.contextResolver);
+        const result = await executeAction(action, rawInput, await getCtx(req), options.contextResolver);
         if (result.ok) {
           res.status(200).json(result.data);
         } else {

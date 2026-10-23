@@ -7,7 +7,9 @@ export interface FastifyAdapterOptions {
   actions: ActionDefinition[];
   /** Prefix for all mounted action routes (e.g. '/api') */
   prefix?: string;
-  /** Extract user session from FastifyRequest. Defaults to (req as any).user */
+  /** Extract context from FastifyRequest. Defaults to (req as any).user */
+  getContext?: (req: FastifyRequest) => any;
+  /** Extract user session from FastifyRequest (alias of getContext). Defaults to (req as any).user */
   getUser?: (req: FastifyRequest) => any;
   /** Default fallback context resolver */
   contextResolver?: ContextResolver;
@@ -20,7 +22,7 @@ export const fastifyMultiplex: FastifyPluginAsync<FastifyAdapterOptions> = async
   fastify: FastifyInstance,
   options: FastifyAdapterOptions,
 ) => {
-  const getUser = options.getUser || ((req: FastifyRequest) => (req as any).user);
+  const getCtx = options.getContext || options.getUser || ((req: FastifyRequest) => (req as any).user);
 
   for (const action of options.actions.filter((a) => a.http)) {
     const http = action.http!;
@@ -32,7 +34,7 @@ export const fastifyMultiplex: FastifyPluginAsync<FastifyAdapterOptions> = async
         const rawInput = http.parseInput
           ? await http.parseInput(request)
           : mergeHttpInput(request.query, request.body, request.params);
-        const result = await executeAction(action, rawInput, await getUser(request), options.contextResolver);
+        const result = await executeAction(action, rawInput, await getCtx(request), options.contextResolver);
         if (result.ok) {
           return reply.status(200).send(result.data);
         }
