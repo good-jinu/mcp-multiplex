@@ -3,7 +3,7 @@ import { isExposedToMcp } from "./action.js";
 import { executeAction } from "./dispatcher.js";
 import { assertValidToolGroup } from "./group.js";
 import { buildMultiplexedArgsSchema, buildMultiplexedDescription, EFFECT_ANNOTATIONS, toJsonSchema } from "./schema.js";
-import type { ActionDefinition, ContextResolver, PreparedMcpTool, ToolGroupDefinition } from "./types.js";
+import type { ActionDefinition, ContextResolver, McpToolInput, PreparedMcpTool } from "./types.js";
 
 export function formatMcpJsonResult(value: unknown) {
   return {
@@ -23,23 +23,74 @@ export function formatMcpErrorResult(message: string) {
   };
 }
 
-function isPreparedTool(item: PreparedMcpTool | ToolGroupDefinition): item is PreparedMcpTool {
-  return item.actions instanceof Map;
+function isPreparedTool(item: McpToolInput): item is PreparedMcpTool {
+  return "actions" in item && item.actions instanceof Map;
+}
+
+function isActionDefinition(item: McpToolInput): item is ActionDefinition {
+  return "handler" in item && "input" in item && !("actions" in item);
 }
 
 /**
- * Compiles ToolGroup definitions into PreparedMcpTool objects (already prepared tools pass through).
- * This can be run once at application startup to cache schemas and annotations.
+ * Compiles ToolGroup definitions or standalone Action definitions into PreparedMcpTool objects.
+ * Standalone actions are registered as direct 1:1 tools without an intermediate `{ action, args }` wrapper.
+ * Tool groups are multiplexed by their capability effect.
+ * Already prepared tools pass through.
  */
-export function prepareMcpTools(toolsOrGroups: (PreparedMcpTool | ToolGroupDefinition)[]): PreparedMcpTool[] {
+export function prepareMcpTools(toolsOrGroupsOrActions: McpToolInput[]): PreparedMcpTool[] {
   const toolNames = new Set<string>();
+  const prepared: PreparedMcpTool[] = [];
 
-  return toolsOrGroups.map((group) => {
+  for (const item of toolsOrGroupsOrActions) {
+    if (isPreparedTool(item)) {
+      if (toolNames.has(item.name)) {
+        throw new Error(`[mcp-multiplex] Duplicate tool name '${item.name}'.`);
+      }
+      toolNames.add(item.name);
+      prepared.push(item);
+      continue;
+    }
+
+    if (isActionDefinition(item)) {
+      if (!isExposedToMcp(item)) {
+        continue;
+      }
+      if (toolNames.has(item.name)) {
+        throw new Error(`[mcp-multiplex] Duplicate tool name '${item.name}'.`);
+      }
+      toolNames.add(item.name);
+
+      const annotations = {
+        title: item.name,
+        openWorldHint: true,
+        ...EFFECT_ANNOTATIONS[item.effect],
+      };
+
+      prepared.push({
+        name: item.name,
+        title: item.name,
+        effect: item.effect,
+        isDirect: true,
+        config: {
+          description: item.description,
+          inputSchema: item.input,
+          annotations,
+          _meta: {
+            "mcp-multiplex/action": item.name,
+            "mcp-multiplex/effect": item.effect,
+          },
+        },
+        actions: new Map<string, ActionDefinition>([[item.name, item]]),
+      });
+      continue;
+    }
+
+    // Otherwise it is a ToolGroupDefinition
+    const group = item;
     if (toolNames.has(group.name)) {
       throw new Error(`[mcp-multiplex] Duplicate tool name '${group.name}'.`);
     }
     toolNames.add(group.name);
-    if (isPreparedTool(group)) return group;
     assertValidToolGroup(group);
 
     const activeActions = group.actions.filter(isExposedToMcp);
@@ -60,10 +111,11 @@ export function prepareMcpTools(toolsOrGroups: (PreparedMcpTool | ToolGroupDefin
       ...group.annotationOverrides,
     };
 
-    return {
+    prepared.push({
       name: group.name,
       title: group.title,
       effect: group.effect,
+      isDirect: false,
       config: {
         description: buildMultiplexedDescription(group, activeActions),
         inputSchema,
@@ -73,8 +125,10 @@ export function prepareMcpTools(toolsOrGroups: (PreparedMcpTool | ToolGroupDefin
         },
       },
       actions: new Map<string, ActionDefinition>(activeActions.map((a) => [a.name, a])),
-    };
-  });
+    });
+  }
+
+  return prepared;
 }
 
 export interface RegisterMcpToolsOptions {
@@ -91,20 +145,36 @@ export interface McpServerLike {
 }
 
 /**
- * Registers prepared MCP tools (or raw tool groups) onto an McpServer instance (SDK v2 or v1).
+ * Registers prepared MCP tools, tool groups, or direct actions onto an McpServer instance (SDK v2 or v1).
  */
 export function registerMcpTools<TUser = unknown>(
   server: McpServerLike,
   user: TUser,
-  toolsOrGroups: (PreparedMcpTool | ToolGroupDefinition)[],
+  toolsOrGroupsOrActions: McpToolInput[],
   options: RegisterMcpToolsOptions = {},
 ): void {
   if (!server) {
     throw new Error("[mcp-multiplex] McpServer instance is required for tool registration.");
   }
 
-  for (const tool of prepareMcpTools(toolsOrGroups)) {
-    const handler = async ({ action, args }: { action: string; args?: unknown }) => {
+  for (const tool of prepareMcpTools(toolsOrGroupsOrActions)) {
+    const handler = async (rawInput: any) => {
+      if (tool.isDirect) {
+        const targetAction = tool.actions.get(tool.name)!;
+        const result = await executeAction(targetAction, rawInput, user, options.contextResolver);
+        if (result.ok) {
+          return formatMcpJsonResult(result.data);
+        }
+        if (result.error.code === "invalid_input") {
+          const schema = toJsonSchema(targetAction.input);
+          const hint = schema ? `\n\nExpected args for '${tool.name}':\n${JSON.stringify(schema, null, 2)}` : "";
+          return formatMcpErrorResult(`${result.error.message}${hint}`);
+        }
+        return formatMcpErrorResult(result.error.message);
+      }
+
+      // Grouped multiplexed tool
+      const { action, args } = (rawInput ?? {}) as { action: string; args?: unknown };
       const targetAction = tool.actions.get(action);
       if (!targetAction) {
         return formatMcpErrorResult(

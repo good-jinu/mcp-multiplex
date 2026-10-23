@@ -99,6 +99,48 @@ export interface PreparedMcpTool {
   effect: CapabilityEffect;
   config: Record<string, unknown>;
   actions: Map<string, ActionDefinition>;
+  /** Whether this tool represents a single direct 1:1 action rather than a multiplexed group */
+  isDirect?: boolean;
+}
+
+/**
+ * Any valid input to MCP tool preparation or registration:
+ * a prepared tool, a tool group, or a standalone action.
+ */
+export type McpToolInput = PreparedMcpTool | ToolGroupDefinition | ActionDefinition;
+
+/**
+ * Options for auto-grouping flat actions by their capability effect.
+ */
+export interface AutoGroupOptions {
+  /** Custom name map for effect groups (default: { read: 'read_tools', write: 'manage_tools', destructive: 'delete_tools' }) */
+  names?: Partial<Record<CapabilityEffect, string>>;
+  /** Custom display titles */
+  titles?: Partial<Record<CapabilityEffect, string>>;
+  /** Custom summaries */
+  summaries?: Partial<Record<CapabilityEffect, string>>;
+}
+
+/**
+ * CORS options for HTTP and MCP handlers.
+ */
+export interface CorsOptions {
+  origin?: string | string[];
+  methods?: string[];
+  headers?: string[];
+  maxAge?: number;
+  credentials?: boolean;
+}
+
+/**
+ * A scoped multiplex instance bound to a specific execution context type.
+ */
+export interface MultiplexInstance<TContext> {
+  action: <TInput = any, TOutput = any>(
+    definition: ActionDefinition<TContext, TInput, TOutput>,
+  ) => ActionDefinition<TContext, TInput, TOutput>;
+  group: (definition: ToolGroupDefinition) => ToolGroupDefinition;
+  toolGroup: (definition: ToolGroupDefinition) => ToolGroupDefinition;
 }
 
 export type ExecutionResult<T> = { ok: true; data: T } | { ok: false; error: CapabilityError };
