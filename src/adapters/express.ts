@@ -1,5 +1,6 @@
 import { type NextFunction, type Request, type Response, Router } from "express";
 import { executeAction } from "../core/dispatcher.js";
+import { httpErrorBody, mergeHttpInput } from "../core/http.js";
 import type { ActionDefinition, ContextResolver } from "../core/types.js";
 
 export interface ExpressAdapterOptions {
@@ -13,43 +14,30 @@ export interface ExpressAdapterOptions {
 
 /**
  * Creates an Express Router that automatically mounts actions with `http` configurations.
+ * Requires a JSON body parser (e.g. `express.json()`) before the router for body input.
  */
 export function createExpressRouter(actions: ActionDefinition[], options: ExpressAdapterOptions = {}): Router {
   const router = Router();
   const getUser = options.getUser || ((req: Request) => (req as any).user);
   const middlewares = options.middleware || [];
 
-  const httpActions = actions.filter((a) => a.http);
-
-  for (const action of httpActions) {
+  for (const action of actions.filter((a) => a.http)) {
     const http = action.http!;
     const method = http.method.toLowerCase() as "get" | "post" | "put" | "patch" | "delete";
 
-    router[method](http.path, ...middlewares, async (req: Request, res: Response) => {
-      let rawInput: unknown;
-
-      if (http.parseInput) {
-        rawInput = http.parseInput(req);
-      } else {
-        const query = req.query || {};
-        const params = req.params || {};
-        const body = req.body || {};
-        rawInput = { ...query, ...params, ...(typeof body === "object" && body !== null ? body : {}) };
+    router[method](http.path, ...middlewares, async (req: Request, res: Response, next: NextFunction) => {
+      // Express 4 does not catch rejected promises, so failures outside the action go to `next`
+      try {
+        const rawInput = http.parseInput ? await http.parseInput(req) : mergeHttpInput(req.query, req.body, req.params);
+        const result = await executeAction(action, rawInput, await getUser(req), options.contextResolver);
+        if (result.ok) {
+          res.status(200).json(result.data);
+        } else {
+          res.status(result.error.status).json(httpErrorBody(result.error));
+        }
+      } catch (err) {
+        next(err);
       }
-
-      const user = getUser(req);
-      const result = await executeAction(action, rawInput, user, options.contextResolver);
-
-      if (!result.ok) {
-        res.status(result.error.status).json({
-          error: result.error.code,
-          message: result.error.message,
-          details: result.error.details,
-        });
-        return;
-      }
-
-      res.status(200).json(result.data);
     });
   }
 

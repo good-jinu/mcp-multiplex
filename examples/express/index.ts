@@ -1,6 +1,7 @@
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import express from "express";
-import { createExpressRouter, defineAction, defineToolGroup, registerMcpTools } from "mcp-multiplex";
+import { defineAction, defineToolGroup, registerMcpTools } from "mcp-multiplex";
+import { createExpressRouter } from "mcp-multiplex/express";
 import { z } from "zod";
 
 // 1. Define Domain Actions

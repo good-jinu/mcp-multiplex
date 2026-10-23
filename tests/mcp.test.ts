@@ -166,3 +166,58 @@ describe("mcp-multiplex MCP Tools", () => {
     );
   });
 });
+
+describe("mcp-multiplex MCP tool safety and errors", () => {
+  const ping = defineAction({
+    name: "ping",
+    description: "Ping",
+    effect: "read",
+    input: z.object({ msg: z.string() }),
+    handler: async (ctx, input) => ({ who: ctx, msg: input.msg }),
+  });
+
+  function register(groups: Parameters<typeof registerMcpTools>[2], options?: Parameters<typeof registerMcpTools>[3]) {
+    const tools = new Map<string, { config: any; handler: Function }>();
+    const server = {
+      registerTool: (name: string, config: any, handler: Function) => tools.set(name, { config, handler }),
+    };
+    registerMcpTools(server, { id: "u1" }, groups, options);
+    return tools;
+  }
+
+  it("validates plain-object groups, not only ones built with defineToolGroup", () => {
+    const write = { ...ping, name: "write", effect: "write" as const };
+    expect(() => prepareMcpTools([{ name: "g", effect: "read", summary: "s", actions: [ping, write] }])).toThrow(
+      /mismatched effect/,
+    );
+  });
+
+  it("rejects duplicate tool names and duplicate actions in a group", () => {
+    const group = { name: "g", effect: "read" as const, summary: "s", actions: [ping] };
+    expect(() => prepareMcpTools([group, group])).toThrow(/Duplicate tool name/);
+    expect(() => prepareMcpTools([{ ...group, actions: [ping, ping] }])).toThrow(/more than once/);
+  });
+
+  it("lets annotationOverrides change openWorldHint", () => {
+    const [tool] = prepareMcpTools([
+      { name: "g", effect: "read", summary: "s", actions: [ping], annotationOverrides: { openWorldHint: false } },
+    ]);
+    expect((tool!.config.annotations as any).openWorldHint).toBe(false);
+  });
+
+  it("resolves context the same way as the HTTP adapters", async () => {
+    const tools = register([{ name: "g", effect: "read", summary: "s", actions: [ping] }], {
+      contextResolver: { resolve: (user) => `ctx:${user.id}` },
+    });
+    const res = await tools.get("g")!.handler({ action: "ping", args: { msg: "hi" } });
+    expect(JSON.parse(res.content[0].text)).toEqual({ who: "ctx:u1", msg: "hi" });
+  });
+
+  it("returns the expected args schema when validation fails", async () => {
+    const tools = register([{ name: "g", effect: "read", summary: "s", actions: [ping] }]);
+    const res = await tools.get("g")!.handler({ action: "ping", args: {} });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toMatch(/^msg: /);
+    expect(res.content[0].text).toContain("Expected args for 'ping'");
+  });
+});

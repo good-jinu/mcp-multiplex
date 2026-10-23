@@ -1,4 +1,5 @@
 import { executeAction } from "../core/dispatcher.js";
+import { httpErrorBody, mergeHttpInput, parseJsonBody } from "../core/http.js";
 import type { ActionDefinition, ContextResolver } from "../core/types.js";
 
 export interface FetchAdapterOptions {
@@ -10,90 +11,78 @@ export interface FetchAdapterOptions {
   contextResolver?: ContextResolver;
 }
 
-function matchRoute(pattern: string, pathname: string): { matched: boolean; params: Record<string, string> } {
-  const patternParts = pattern.split("/").filter(Boolean);
-  const pathParts = pathname.split("/").filter(Boolean);
+function json(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
 
-  if (patternParts.length !== pathParts.length) {
-    return { matched: false, params: {} };
-  }
+function splitPath(path: string): string[] {
+  return path.split("/").filter(Boolean);
+}
+
+/** Path params when `pathParts` matches `pattern` (e.g. "/issues/:id"), or undefined. */
+function matchRoute(pattern: string[], pathParts: string[]): Record<string, string> | undefined {
+  if (pattern.length !== pathParts.length) return undefined;
 
   const params: Record<string, string> = {};
-  for (let i = 0; i < patternParts.length; i++) {
-    const pPart = patternParts[i]!;
-    const aPart = pathParts[i]!;
-    if (pPart.startsWith(":")) {
-      params[pPart.slice(1)] = decodeURIComponent(aPart);
-    } else if (pPart !== aPart) {
-      return { matched: false, params: {} };
+  for (let i = 0; i < pattern.length; i++) {
+    const expected = pattern[i]!;
+    const actual = pathParts[i]!;
+    if (expected.startsWith(":")) {
+      try {
+        params[expected.slice(1)] = decodeURIComponent(actual);
+      } catch {
+        return undefined; // malformed percent-encoding cannot match a parameter
+      }
+    } else if (expected !== actual) {
+      return undefined;
     }
   }
-
-  return { matched: true, params };
+  return params;
 }
 
 /**
  * Creates a universal Web Standard (Request -> Response) fetch handler for HTTP REST routes.
  */
 export function createFetchHandler(actions: ActionDefinition[], options: FetchAdapterOptions = {}) {
-  const httpActions = actions.filter((a) => a.http);
-  const basePath = options.basePath?.replace(/\/+$/, "") || "";
+  const routes = actions
+    .filter((a) => a.http)
+    .map((action) => ({ action, http: action.http!, pattern: splitPath(action.http!.path) }));
+  const basePath = splitPath(options.basePath ?? "");
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const method = request.method.toLowerCase();
-    let pathname = url.pathname;
+    const pathParts = splitPath(url.pathname);
 
-    if (basePath && pathname.startsWith(basePath)) {
-      pathname = pathname.slice(basePath.length) || "/";
+    // The base path must match whole segments: "/api" serves "/api/x" but not "/apiary/x"
+    if (basePath.some((segment, i) => pathParts[i] !== segment)) {
+      return json({ error: "not_found", message: "Route not found" }, 404);
     }
+    const routePath = pathParts.slice(basePath.length);
 
-    for (const action of httpActions) {
-      const http = action.http!;
+    for (const { action, http, pattern } of routes) {
       if (http.method.toLowerCase() !== method) continue;
+      const params = matchRoute(pattern, routePath);
+      if (!params) continue;
 
-      const { matched, params } = matchRoute(http.path, pathname);
-      if (!matched) continue;
-
-      // Extract raw input
-      let rawInput: any = {};
+      let rawInput: unknown;
       if (http.parseInput) {
         rawInput = await http.parseInput(request);
       } else {
-        const queryParams = Object.fromEntries(url.searchParams.entries());
-        let body: any = {};
+        let body: unknown = {};
         if (method !== "get" && method !== "head") {
-          try {
-            body = await request.json();
-          } catch {
-            body = {};
-          }
+          const parsed = parseJsonBody(await request.text());
+          if (!parsed.ok) return json(httpErrorBody(parsed.error), parsed.error.status);
+          body = parsed.body;
         }
-        rawInput = { ...queryParams, ...params, ...(typeof body === "object" && body !== null ? body : {}) };
+        rawInput = mergeHttpInput(Object.fromEntries(url.searchParams), body, params);
       }
 
       const user = options.getUser ? await options.getUser(request) : undefined;
       const result = await executeAction(action, rawInput, user, options.contextResolver);
-
-      if (!result.ok) {
-        return new Response(
-          JSON.stringify({ error: result.error.code, message: result.error.message, details: result.error.details }),
-          {
-            status: result.error.status,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-      }
-
-      return new Response(JSON.stringify(result.data), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return result.ok ? json(result.data, 200) : json(httpErrorBody(result.error), result.error.status);
     }
 
-    return new Response(JSON.stringify({ error: "not_found", message: "Route not found" }), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
+    return json({ error: "not_found", message: "Route not found" }, 404);
   };
 }

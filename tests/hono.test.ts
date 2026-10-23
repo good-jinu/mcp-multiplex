@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createHonoRoutes, defineAction } from "../src/index.js";
+import { createHonoRoutes } from "../src/adapters/hono.js";
+import { defineAction } from "../src/index.js";
 
 describe("mcp-multiplex Hono Adapter", () => {
   it("should handle Hono routes seamlessly via Web Standard Request", async () => {

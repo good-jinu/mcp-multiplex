@@ -1,5 +1,6 @@
-import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest, HTTPMethods } from "fastify";
 import { executeAction } from "../core/dispatcher.js";
+import { httpErrorBody, mergeHttpInput } from "../core/http.js";
 import type { ActionDefinition, ContextResolver } from "../core/types.js";
 
 export interface FastifyAdapterOptions {
@@ -20,40 +21,22 @@ export const fastifyMultiplex: FastifyPluginAsync<FastifyAdapterOptions> = async
   options: FastifyAdapterOptions,
 ) => {
   const getUser = options.getUser || ((req: FastifyRequest) => (req as any).user);
-  const httpActions = options.actions.filter((a) => a.http);
 
-  for (const action of httpActions) {
+  for (const action of options.actions.filter((a) => a.http)) {
     const http = action.http!;
-    const method = http.method.toUpperCase() as any;
 
     fastify.route({
-      method,
+      method: http.method.toUpperCase() as HTTPMethods,
       url: http.path,
       handler: async (request: FastifyRequest, reply: FastifyReply) => {
-        let rawInput: unknown;
-
-        if (http.parseInput) {
-          rawInput = await http.parseInput(request);
-        } else {
-          const query = (request.query as any) || {};
-          const params = (request.params as any) || {};
-          const body = (request.body as any) || {};
-          rawInput = { ...query, ...params, ...(typeof body === "object" && body !== null ? body : {}) };
+        const rawInput = http.parseInput
+          ? await http.parseInput(request)
+          : mergeHttpInput(request.query, request.body, request.params);
+        const result = await executeAction(action, rawInput, await getUser(request), options.contextResolver);
+        if (result.ok) {
+          return reply.status(200).send(result.data);
         }
-
-        const user = getUser(request);
-        const result = await executeAction(action, rawInput, user, options.contextResolver);
-
-        if (!result.ok) {
-          reply.status(result.error.status).send({
-            error: result.error.code,
-            message: result.error.message,
-            details: result.error.details,
-          });
-          return;
-        }
-
-        reply.status(200).send(result.data);
+        return reply.status(result.error.status).send(httpErrorBody(result.error));
       },
     });
   }

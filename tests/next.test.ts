@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createNextHandler, defineAction, defineToolGroup } from "../src/index.js";
+import { createNextHandler } from "../src/adapters/next.js";
+import { defineAction, defineToolGroup } from "../src/index.js";
 
 describe("mcp-multiplex Next.js App Router Adapter", () => {
   const getProduct = defineAction({

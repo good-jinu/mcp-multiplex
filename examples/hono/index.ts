@@ -1,7 +1,8 @@
 import { createMcpHonoApp } from "@modelcontextprotocol/hono";
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import { Hono } from "hono";
-import { createHonoRoutes, defineAction, defineToolGroup, registerMcpTools } from "mcp-multiplex";
+import { defineAction, defineToolGroup, registerMcpTools } from "mcp-multiplex";
+import { createHonoRoutes } from "mcp-multiplex/hono";
 import { z } from "zod";
 
 // 1. Define Actions

@@ -128,3 +128,50 @@ describe("mcp-multiplex Core", () => {
     }
   });
 });
+
+describe("mcp-multiplex Core errors", () => {
+  it("rejects duplicate action names in a dispatcher", () => {
+    const a = defineAction({ name: "a", description: "A", effect: "read", input: z.object({}), handler: () => 1 });
+    expect(() => createActionDispatcher([a, a])).toThrow(/Duplicate action name 'a'/);
+  });
+
+  it("passes through thrown errors that already carry status, code and message", async () => {
+    class ApiError extends Error {
+      constructor(
+        readonly status: number,
+        readonly code: string,
+        message: string,
+      ) {
+        super(message);
+      }
+    }
+    const fail = defineAction({
+      name: "fail",
+      description: "Fail",
+      effect: "read",
+      input: z.object({}),
+      handler: () => {
+        throw new ApiError(409, "conflict", "Busy");
+      },
+    });
+    const result = await executeAction(fail, {}, undefined);
+    expect(result).toEqual({
+      ok: false,
+      error: { status: 409, code: "conflict", message: "Busy", details: undefined },
+    });
+  });
+
+  it("treats objects with a non-numeric status as internal errors", async () => {
+    const fail = defineAction({
+      name: "fail",
+      description: "Fail",
+      effect: "read",
+      input: z.object({}),
+      handler: () => {
+        throw { status: "bad", code: "x", message: "m" };
+      },
+    });
+    const result = await executeAction(fail, {}, undefined);
+    expect(!result.ok && result.error.code).toBe("internal_error");
+  });
+});

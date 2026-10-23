@@ -1,7 +1,8 @@
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineAction, fastifyMultiplex } from "../src/index.js";
+import { fastifyMultiplex } from "../src/adapters/fastify.js";
+import { defineAction } from "../src/index.js";
 
 describe("mcp-multiplex Fastify Adapter", () => {
   it("should mount and execute actions on Fastify", async () => {

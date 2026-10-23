@@ -1,5 +1,5 @@
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
-import { registerMcpTools } from "../core/mcp.js";
+import { prepareMcpTools, registerMcpTools } from "../core/mcp.js";
 import type { ActionDefinition, ContextResolver, PreparedMcpTool, ToolGroupDefinition } from "../core/types.js";
 import { createFetchHandler } from "./fetch.js";
 
@@ -16,7 +16,7 @@ export interface NextAdapterOptions {
   basePath?: string;
   /** Extract user session/identity from Next.js Web Request */
   getUser?: (request: Request) => any | Promise<any>;
-  /** Default context resolver */
+  /** Default context resolver, used by both the REST routes and the MCP tools */
   contextResolver?: ContextResolver;
 }
 
@@ -46,16 +46,18 @@ export function createNextHandler(options: NextAdapterOptions) {
 
   const mcpPath = options.mcpPath || "/api/mcp";
   const mcpServerName = options.mcpServerName || "next-mcp-server";
+  // Compile once at startup (validates the groups) instead of on every MCP request
+  const toolGroups = options.toolGroups ? prepareMcpTools(options.toolGroups) : undefined;
 
   const handleRequest = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
     // 1. Check if request targets the MCP endpoint
-    if (options.toolGroups && url.pathname === mcpPath) {
+    if (toolGroups && url.pathname === mcpPath) {
       const user = options.getUser ? await options.getUser(request) : undefined;
       const server = new McpServer({ name: mcpServerName, version: "1.0.0" });
 
-      registerMcpTools(server, user, options.toolGroups);
+      registerMcpTools(server, user, toolGroups, { contextResolver: options.contextResolver });
 
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
