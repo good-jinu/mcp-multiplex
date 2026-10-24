@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout code repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -31,13 +33,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Create and publish versions
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
           version: pnpm ci:version
           commit: "chore: update versions"
           title: "chore: update versions"
           publish: pnpm ci:release
-          createGithubReleases: true
+          create-github-releases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
